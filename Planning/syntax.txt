@@ -1,0 +1,6 @@
+test1 = 1
+test2 = "Test"
+test3 = true
+test4 a (b = 3) = seq 0 a } reverse { (> a < a + b) | stdout
+test5 = ["Kek", 5, test3]
+stdin | take 3 } reduce (> val > cur < val + cur) 0 | replicate 5 } stdout

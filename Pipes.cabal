@@ -1,0 +1,81 @@
+-- This file has been generated from package.yaml by hpack version 0.28.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: e9ba07879b7fb4ae3bcdbf00adfd038c61f26216273a5f6e619e1bf978ee2977
+
+name:           Pipes
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/Pipes#readme>
+homepage:       https://github.com/githubuser/Pipes#readme
+bug-reports:    https://github.com/githubuser/Pipes/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2018 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+extra-source-files:
+    ChangeLog.md
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/Pipes
+
+library
+  exposed-modules:
+      Interpret.Environment
+      Interpret.Expression
+      Interpret.Pipe
+      Matrix
+      SKP
+      Types
+  other-modules:
+      Paths_Pipes
+  hs-source-dirs:
+      src
+  build-depends:
+      array
+    , base >=4.7 && <5
+    , containers
+    , lens
+    , mtl
+    , streamly
+  default-language: Haskell2010
+
+executable Pipes-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_Pipes
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Pipes
+    , array
+    , base >=4.7 && <5
+    , containers
+    , lens
+    , mtl
+    , streamly
+  default-language: Haskell2010
+
+test-suite Pipes-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_Pipes
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Pipes
+    , array
+    , base >=4.7 && <5
+    , containers
+    , lens
+    , mtl
+    , streamly
+  default-language: Haskell2010
