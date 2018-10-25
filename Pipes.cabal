@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e9ba07879b7fb4ae3bcdbf00adfd038c61f26216273a5f6e619e1bf978ee2977
+-- hash: 739fa8e650643e95184bb4cdc4f9e959f5d56d620cc7b570f3f633ab954fee6b
 
 name:           Pipes
 version:        0.1.0.0
@@ -30,7 +30,6 @@ library
       Interpret.Expression
       Interpret.Pipe
       Matrix
-      SKP
       Types
   other-modules:
       Paths_Pipes
