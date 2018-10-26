@@ -82,3 +82,4 @@ data Definition = Def {_identifier :: Identifier,  _arguments :: [DefArgument] ,
 
 makeLenses ''Environment
 makeLenses ''Definition
+makePrisms ''PipeComponent
