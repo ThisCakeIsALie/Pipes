@@ -11,7 +11,9 @@ import Streamly
 
 
 
-type Runtime = StateT Environment (SerialT IO)
+--type Runtime = StateT Environment (SerialT IO)
+
+type ValueStream = SerialT IO PValue
 
 type Identifier = String
 
@@ -33,7 +35,7 @@ data PValue = PString String
             | None
 
 instance Show PValue where
-    show (PString string) = string
+    show (PString string) = show string
     show (PNumber number) = show number
     show (PBool bool) = show bool
     show (PList list) = show list
@@ -83,3 +85,7 @@ data Definition = Def {_identifier :: Identifier,  _arguments :: [DefArgument] ,
 makeLenses ''Environment
 makeLenses ''Definition
 makePrisms ''PipeComponent
+makePrisms ''Pipe
+makePrisms ''Pipeline
+makePrisms ''Expression
+makePrisms ''PValue
