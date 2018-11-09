@@ -5,6 +5,7 @@ import Control.Lens.TH
 import Data.Map (Map)
 import Control.Monad.State
 import Streamly
+import Streamly.Prelude as S
 
 -- Other
 
@@ -29,19 +30,19 @@ data Environment = Environment { _vars :: Map Identifier PValue, _defs :: Map Id
 data PValue = PString String
             | PNumber Double
             | PBool Bool
-            | PList [PValue]
+            | PList ValueStream
             | PPipeline Pipeline
             | PError String
             | None
 
-instance Show PValue where
-    show (PString string) = show string
-    show (PNumber number) = show number
-    show (PBool bool) = show bool
-    show (PList list) = show list
-    show (PPipeline line) = show (PError "Pipelines cannot be viewed")
-    show (PError error) = "Unexpected Error occured: " ++ error
-    show None = "None"
+display :: PValue -> IO String
+display (PString string) = return $ show string
+display (PNumber number) = return $ show number
+display (PBool bool) = return $ show bool
+display (PList list) = fmap show . toList $ S.mapM display list
+display (PPipeline line) = display (PError "Pipelines cannot be viewed")
+display (PError error) = return $ "Unexpected Error occured: " ++ error
+display None = return $ "None"
 
 data Expression = Value PValue
                 | Var Identifier
@@ -72,14 +73,14 @@ data Pipeline = Connect Pipe Pipeline
 
 
 
-data DefArgument = Named Identifier -- | Defined Identifier Expression
+type DefArgument = Identifier -- | Defined Identifier Expression
 
 
 
 
 
 
-data Definition = Def {_identifier :: Identifier,  _arguments :: [DefArgument] , _value :: Expression}
+data Definition = Def {_arguments :: [DefArgument] , _value :: Expression}
 
 
 makeLenses ''Environment
