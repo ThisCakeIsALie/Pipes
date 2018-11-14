@@ -18,7 +18,7 @@ type ValueStream = SerialT IO PValue
 
 type Identifier = String
 
-data Environment = Environment { _vars :: Map Identifier PValue, _defs :: Map Identifier Definition }
+data Environment = Environment { _vars :: Map Identifier PValue, _defs :: Map Identifier Definition}
 
 -- Syntax
 
@@ -46,7 +46,7 @@ display None = return $ "None"
 
 data Expression = Value PValue
                 | Var Identifier
-                | Application Expression PValue --If PValue is PPipeline apply. Otherwise Error
+                | Application PValue --If PValue is PPipeline apply. Otherwise Error
 
 
 
@@ -55,20 +55,18 @@ data Expression = Value PValue
 
 
 
-data PipeComponent = In Identifier
-                   | Out Expression
-                   -- | Assign Identifier Expression
+data PipeComponent = Assign Identifier Expression
 
 
+data Definition = Def [Identifier] Expression | Builtin (Environment -> [Expression] -> ValueStream -> ValueStream)
 
+data Pipe = Pipe {_components :: [PipeComponent], _inputs :: [Identifier], _outputs :: [Expression]}
 
+data PipeCall = Local Pipe [Expression] | Call Identifier [Expression]
 
-
-data Pipe = Anonymous [PipeComponent] {- Scope -} | Call Identifier [PValue]
-
-data Pipeline = Connect Pipe Pipeline
-              | Gather Pipe Pipeline
-              | Spread Pipe Pipeline
+data Pipeline = Connect PipeCall Pipeline
+              | Gather PipeCall Pipeline
+              | Spread PipeCall Pipeline
               | End
 
 
@@ -76,17 +74,11 @@ data Pipeline = Connect Pipe Pipeline
 type DefArgument = Identifier -- | Defined Identifier Expression
 
 
-
-
-
-
-data Definition = Def {_arguments :: [DefArgument] , _value :: Expression}
-
-
 makeLenses ''Environment
-makeLenses ''Definition
+makeLenses ''Pipe
+makePrisms ''Definition
+makePrisms ''PipeCall
 makePrisms ''PipeComponent
-makePrisms ''Pipe
 makePrisms ''Pipeline
 makePrisms ''Expression
 makePrisms ''PValue
