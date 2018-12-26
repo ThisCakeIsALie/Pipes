@@ -6,6 +6,7 @@ import Data.Map (Map)
 import Control.Monad.State
 import Streamly
 import Streamly.Prelude as S
+import System.IO.Unsafe
 
 -- Other
 
@@ -43,6 +44,15 @@ display (PList list) = fmap show . toList $ S.mapM display list
 display (PPipeline line) = display (PError "Pipelines cannot be viewed")
 display (PError error) = return $ "Unexpected Error occured: " ++ error
 display None = return $ "None"
+
+instance Show PValue where
+    show (PString string) = show string
+    show (PNumber number) = show number
+    show (PBool bool) = show bool
+    show (PList list) = show $ unsafePerformIO $ toList $ list
+    show (PPipeline line) = show (PError "Pipelines cannot be viewed")
+    show (PError error) = show $ "Unexpected Error occured: " ++ error
+    show None = "None"
 
 data Expression = Value PValue
                 | Var Identifier

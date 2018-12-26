@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 85f3152deadbb7faa2f66ba6262165ca859c81522265c2d87294c978ddcda970
+-- hash: 40b91dc32540b196898ab2020f79b2e6273c31aabc06acd20c26f404e11bc70d
 
 name:           Pipes
 version:        0.1.0.0
@@ -27,8 +27,8 @@ source-repository head
 library
   exposed-modules:
       Interpret.Environment
+      Interpret.Evaluate
       Interpret.Expression
-      Interpret.Pipe
       Matrix
       Testing
       Types

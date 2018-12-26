@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Interpret.Pipe where
+module Interpret.Evaluate where
 
 import Streamly
 import qualified Streamly.Prelude as S
@@ -10,27 +10,23 @@ import Control.Lens
 import Control.Applicative ((<|>))
 import Data.Maybe (mapMaybe)
 import qualified Data.Map as Map
-import Interpret.Expression
 
 --TODO: take elements from stream if arguments underflow
 --TODO: If a non element is found
 --TODO: Replace Call with Expr and specialize current to Var
 evaluatePipe :: Environment -> PipeCall -> ValueStream -> ValueStream
-evaluatePipe env (Call identifier args) s = case fetchAny identifier of
-
-  Just (Right (PPipeline line)) -> 
-    if length args == 0
-      then evaluatePipeline env line s
-      else error "This pipeline is fully evaluated"
+evaluatePipe env (Call identifier args) s = case fetchAny env identifier of
   
-  Just (Right value) -> undefined
+  Just (Right value) -> applyMultiple 0 (const $ return [value]) s
 
-  Just (Left  (Def argDefs expr)) -> do
+  Just (Left (Def argDefs expr)) -> do
     evalArgs <- lift $ traverse (evaluateExpr env) args
     let underflow = length argDefs - length args
-        mapper values = do
-          undefined
-    undefined
+        mapper rest = do
+          let localEnv = localizeEnv (zip argDefs (evalArgs ++ rest)) env
+          result <- evaluateExpr localEnv expr
+          return [result]
+    applyMultiple underflow mapper s
     {-
     rest <- if underflow > 0
               then lift $ S.toList $ S.take underflow s
@@ -44,16 +40,12 @@ evaluatePipe env (Call identifier args) s = case fetchAny identifier of
           value -> S.cons value (S.drop underflow s)
       else S.nil
     -}
-  Just (Left (Builtin transformer)) -> undefined
+  Just (Left (Builtin transformer)) -> transformer env args s
 
   Just _  -> S.once . return $ PError (identifier ++ " is not a pipe")
 
   Nothing -> S.once . return $ PError (identifier ++ " is not defined")
-
-  where
-    fetchAny identifier = case fetchVar env identifier of
-      Nothing -> Left <$> fetchDef env identifier
-      var -> Right <$> var 
+    
 
 
 
@@ -68,7 +60,7 @@ evaluatePipe env (Local (Pipe comp inputs outputs) staticArgs) s = do
 
  where
   mapper static input output values =
-    let localEnv = localizeEnv (static ++ zip input values) env
+    let localEnv = localizeEnv (zip input values ++ static) env
     in  traverse (evaluateExpr localEnv) output
 
 {-
@@ -129,6 +121,11 @@ evaluatePipe env (Anonymous comp) s =
 
 -}
 
+fetchAny :: Environment -> Identifier -> Maybe (Either Definition PValue)
+fetchAny env identifier = case fetchVar env identifier of
+      Nothing -> Left <$> fetchDef env identifier
+      var -> Right <$> var 
+
 updateEnv :: (Identifier, PValue) -> Environment -> Environment
 updateEnv (identifier, value) env = env & vars %~ Map.insert identifier value
 
@@ -148,6 +145,18 @@ evaluatePipeline env (Spread pipe rest) s =
 
 apply :: Environment -> PipeCall -> Pipeline -> ValueStream -> ValueStream
 apply env pipe rest = evaluatePipeline env rest . evaluatePipe env pipe
+
+evaluateExpr :: Environment -> Expression -> IO PValue
+evaluateExpr env (Value pval      ) = return pval
+evaluateExpr env (Var   identifier) = undefined{-case fetchAny env identifier of
+  Just (Right value) -> case value of
+    Just val -> return val
+    Nothing  -> return $ PError ("Variable \"" ++ identifier ++ "\" not bound")
+  Just (Left (Def _ args)) -> if length args > 0 then undefined else undefined
+  -}
+evaluateExpr env (Application (PPipeline line)) = return $ PList $ evaluatePipeline env line S.nil
+evaluateExpr env (Application value) =
+  return (PError "Tried to apply a non-pipe value")
 
 applyMultiple
   :: (Monad m, MonadAsync m)
@@ -172,7 +181,16 @@ applyMultiple n f s = do
     then S.nil
     else (asStream $ f args) <> applyMultiple n f rest
 
+
 asStream :: (Monad m, MonadAsync m) => m [a] -> SerialT m a
 asStream xs = do
   list <- lift xs
   S.fromFoldable list
+
+
+inputSize :: Pipeline -> Int
+inputSize End = 1
+inputSize (Connect pipe _) = undefined--length $ inputs pipe
+inputSize (Gather pipe _) = undefined--length $ inputs pipe
+inputSize (Spread pipe _) = undefined--length $ inputs pipe
+
