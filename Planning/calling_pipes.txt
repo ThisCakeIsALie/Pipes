@@ -1,15 +1,17 @@
 # Anonymous no args
-range 1 100 | (< a < b $ c (* a b) > (* a c) > c) | print
+range 1 100 { a, b let c (* a b) > (* a c), c) | print
 
 # Anonymous args (prints kek 100 times)
-range 1 100 | (< a < b > a) "kek" | print
+range 1 100 { (a,b > a) "kek" | print
 
 # Named no args (regular)
-range 1 100 | + | print
+range 1 100 { + | print
 
 # Named args (underflow by 1)
-range 1 100 | + 3 | print
+range 1 100 { + 3 | print
 
 + a b = # sum of a and b
 
 kek a b = + a b
+
+range 1 100 { a,b > (+ a b | + 3) | print

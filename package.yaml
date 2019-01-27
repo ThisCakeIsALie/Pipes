@@ -26,6 +26,7 @@ dependencies:
 - streamly
 - mtl
 - array
+- parsec
 
 library:
   source-dirs: src

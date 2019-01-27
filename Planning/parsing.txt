@@ -1,0 +1,33 @@
+Grammar:
+
+AST ::= {Statement}
+
+Statement ::= Expression | Definition
+
+Definition ::= Identifier "=" Pipe
+
+Expression ::= (Expression) | Identifier {Expression} | Value
+
+Value ::= (Value) | String | Number | Bool | List | Pipeline | None | Identifier
+
+Pipe ::= (Pipe) | Identifier {Expression} | IdList ">" ExpList
+
+IdList ::= Identifier | Identifier "," IdList
+
+ExpList ::= Expression | Expression "," ExpList
+
+String ::= "'" Starts with char "'"
+
+Number ::= Double
+
+Bool ::= "true" | "false"
+
+List ::= "[" ListElems "]" | "[]"
+
+ListElems ::= Value "," ListElems | Value
+
+None ::= "none"
+
+Identifier ::= Starts with char
+
+Pipeline ::= Pipe ("|" | "{" | "}") Pipeline | Pipe
