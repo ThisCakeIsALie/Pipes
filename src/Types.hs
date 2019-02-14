@@ -19,7 +19,7 @@ type ValueStream = SerialT IO PValue
  
 type Identifier = String
  
-data Environment = Environment {_defs :: Map Identifier Definition}
+data Environment = Environment {_defs :: Map Identifier Definition} deriving Show
  
 -- Syntax
  
@@ -50,13 +50,16 @@ instance Show PValue where
     show (PNumber number) = show number
     show (PBool bool) = show bool
     show (PList list) = show $ unsafePerformIO $ toList $ list
+    show (PPipe (Anonymous _ pipeEnv inputs output)) = show inputs ++ " -> " ++ show output ++ " bound: " ++ show pipeEnv
+    show (PPipe (Yield exprs pipe)) = show exprs ++ " " ++ show (PPipe pipe)
     show (PPipe line) = show (PError "Pipelines cannot be viewed")
     show (PError error) = show $ "Unexpected Error occured: " ++ error
     show None = "None"
  
 data Expression = Value PValue
                 | Var Identifier
-                | Application PValue [Expression]
+                | Application Expression [Expression]
+                deriving Show
  
  
  
@@ -68,11 +71,18 @@ data Expression = Value PValue
 data PipeComponent = Assign Identifier Expression
  
  
-data Definition = Def Pipe | Builtin (Environment -> [Expression] -> ValueStream -> ValueStream)
+data Definition = Def Expression deriving Show
  
  
-data Pipe = Pipe {_components :: [PipeComponent], _inputs :: [Identifier], _outputs :: [Expression]}
-          | Call Identifier
+data Pipe = Anonymous {_components :: [PipeComponent], _env :: Environment, _inputs :: [Identifier], _output :: Expression}
+          | Apply Expression
+          {-| Builtin {_scopeUpdater :: Map Identifier Definition -> Pipe
+                   , _evalUpdater :: Environment -> [Expression] -> (Pipe,Bool)
+                   , _transformer :: Environment -> ValueStream -> ValueStream
+                    }
+            -}
+          | Builtin {_env :: Environment, _argsLeft :: Environment -> Int, _transformer :: [(Identifier, PValue)] -> [PValue] -> IO [PValue]}
+          | Yield [Expression] Pipe
           | Connect Pipe Pipe
           | Gather Pipe Pipe
           | Spread Pipe Pipe

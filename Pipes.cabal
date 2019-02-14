@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 302e1afc712b264472fcd9f735a72abd13192df2721b0ecaafbdce7894fb6619
+-- hash: aa4ca580f9049c48a2808ae731ddc7eedf42a7b952423824ab7822b2c419ca4d
 
 name:           Pipes
 version:        0.1.0.0
@@ -29,8 +29,12 @@ library
   exposed-modules:
       Interpret.Environment
       Interpret.Evaluate
+      Language.Arithmetic
+      Language.IO
+      Language.Presets
       Matrix
       Parse.ParseTest
+      Pipes
       Testing
       Types
   other-modules:
