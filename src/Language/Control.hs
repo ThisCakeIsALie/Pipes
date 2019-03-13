@@ -6,7 +6,7 @@ import Language.Presets
 import Data.Map (Map)
 
 controlBuiltins :: Map Identifier Definition
-controlBuiltins = [("~", Def $ Value $ unaryBuiltin idValue)]
+controlBuiltins = [("~", asPipe idValue)]
 
 idValue :: PValue -> IO PValue
 idValue = return

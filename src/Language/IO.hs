@@ -4,11 +4,16 @@ module Language.IO where
 import Types
 import Language.Presets
 import Data.Map (Map)
+import System.IO
 
 ioBuiltins :: Map Identifier Definition
-ioBuiltins = [("print", Def $ Value $ unaryBuiltin printValue)]
+ioBuiltins = [("println", asPipe printlnValue),("print", asPipe printValue),("input", asPipe inputValue)]
+
+printlnValue :: PValue -> IO PValue
+printlnValue val = putStrLn (show val) >> return val
 
 printValue :: PValue -> IO PValue
-printValue val = do
-    print val
-    return None
+printValue val = putStr (show val) >> hFlush stdout >> return val
+
+inputValue :: IO PValue
+inputValue = PString <$> getLine

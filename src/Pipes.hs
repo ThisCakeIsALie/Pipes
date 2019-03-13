@@ -2,7 +2,7 @@
 module Pipes where
 
 import Types
-import Parse.ParseTest
+import Parse.Parser
 import Interpret.Evaluate
 import Text.ParserCombinators.Parsec
 import qualified Streamly.Prelude as S
@@ -10,6 +10,7 @@ import Data.Map (Map)
 import Language.Arithmetic
 import Language.IO
 import Language.Control
+import Language.List
 
 evalExpr :: String -> IO PValue
 evalExpr input = 
@@ -18,7 +19,7 @@ evalExpr input =
         Left failed -> error (show failed)
 
 prelude :: Environment
-prelude = Environment (arithmeticBuiltins <> ioBuiltins <> controlBuiltins)
+prelude = arithmeticBuiltins <> ioBuiltins <> controlBuiltins <> (listBuiltins prelude)
 
 succValue :: PValue -> PValue
 succValue (PNumber n) = PNumber (n+1)

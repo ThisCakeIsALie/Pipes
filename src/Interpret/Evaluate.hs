@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE TupleSections #-}
 module Interpret.Evaluate where
  
 import Streamly
@@ -17,31 +16,37 @@ import Data.Map (Map)
 evaluatePipeInner :: Environment -> Pipe -> ValueStream -> ValueStream
 evaluatePipeInner env pipe s = case pipe of
 
-  Yield _ _ -> error "Can't yield inside a pipe"
-
   Apply expr -> do
     evalExpr <- lift $ evaluateExpr env expr
     case evalExpr of
       PPipe pipe -> evaluatePipeInner env pipe s
       value -> yieldValue value
 
-  Anonymous comp argEnv inputs output -> 
+  Anonymous closure boundArgs inputs output -> 
     let
-      transformer :: [(Identifier, PValue)] -> [PValue] -> IO [PValue]
       transformer evalArgs rest = do
-          let localEnv = localizeEnvWithValue (evalArgs ++ zip inputs rest) env
+          let values = Map.toList closure ++ zip inputs (evalArgs ++ rest)
+          let localEnv = localizeEnvWithValue values env
           outputValue <- evaluateExpr localEnv output
-          return [fixScope (argEnv ^. defs) outputValue]
-    in evalRawPipe argEnv (length inputs) transformer s
+          return $ propagateEnvInValue localEnv outputValue
+    in do
+      evalArgs <- lift $ traverse (evaluateExpr env) boundArgs
+      evalRawPipe (length inputs - length evalArgs) (transformer evalArgs) s
 
-  Builtin argEnv argsLeft transformer -> evalRawPipe argEnv (argsLeft argEnv) transformer s
+  Builtin boundArgs argsLeft transformer -> do
+    evalArgs <- lift $ traverse (evaluateExpr env) boundArgs
+    evalRawPipe (argsLeft boundArgs) (transformer evalArgs) s
 
   Connect first rest -> evaluatePipeInner env rest . evaluatePipeInner env first $ s
 
-  Gather first rest -> 
+  Gather first second -> do
+    drained <- lift $ S.toList $ evaluatePipeInner env first s
+    evaluatePipeInner env second (return $ PList $ S.fromFoldable drained)
+
+  Forward first rest -> 
     let
       firstResult = evaluatePipeInner env first s
-      packedResult = S.once . return . PList $ firstResult
+      packedResult = return . PList $ firstResult
     in evaluatePipeInner env rest packedResult
 
   Spread first rest ->
@@ -50,85 +55,32 @@ evaluatePipeInner env pipe s = case pipe of
     in firstResult >>= spread & evaluatePipeInner env rest
 
  where
-
-  evalRawPipe argEnv underflow transformer s = do
-    evalArgs <- lift $ evalArgsFromEnv argEnv
+  evalRawPipe underflow transformer s =
     if underflow >= 0
-      then applyMultiple underflow (transformer evalArgs) s
+      then applyMultiple underflow transformer s
       else error "Pipe got too many arguments"
 
-  yieldValue value = evalRawPipe (Environment []) 0 (\_ _ -> return $ ([value] :: [PValue])) s
-
-  evalAnonPipe argEnv inputs output s = do
-    evalArgs <- lift $ evalArgsFromEnv argEnv
-    let underflow = length inputs
-        mapper :: [PValue] -> IO [PValue]
-        mapper rest = do
-          let localEnv = localizeEnvWithValue (evalArgs ++ zip inputs rest) env
-          outputValue <- evaluateExpr localEnv output
-          --TODO: Hier schauen ob noch args und ist pipe
-          return [fixScope (argEnv ^. defs) outputValue]
-    if underflow >= 0
-      then applyMultiple underflow mapper s
-      else error "Pipe got too many arguments"
-
-  evalArgsFromEnv (Environment args) = 
-    let
-      evalArg (identifier, (Def expr)) = (identifier,) <$> evaluateExpr env expr
-    in traverse evalArg (Map.toList args)
+  yieldValue value = evalRawPipe 0 (\_ -> return value) s
 
   spread (PList list) = list
-  spread value        = S.once . return $ value
+  spread value        = return value
  
-fixScope :: Map Identifier Definition -> PValue -> PValue
-fixScope fixes (PPipe pipe) = PPipe $ fixScopePipe fixes pipe
-fixScope fixes (PList list) = PList $ S.mapM (return . fixScope fixes) list
-fixScope fixes value = value
-
-fixScopePipe :: Map Identifier Definition -> Pipe -> Pipe
-fixScopePipe fixes pipe = case pipe of
-  Yield exprs rest -> Yield (map (fixScopeExpr fixes) exprs) (fixScopePipe fixes rest)
-  Apply expr -> Apply (fixScopeExpr fixes expr)
-  Anonymous comp pipeEnv inputs output -> Anonymous comp (pipeEnv & defs %~ (fixes <>)) inputs output
-  Builtin boundArgs argsLeft transformer -> Builtin (boundArgs & defs %~ (fixes <>)) ((+ (length fixes)) . argsLeft) transformer
-  Connect first second -> Connect (fixScopePipe fixes first) (fixScopePipe fixes second)
-  Spread first second -> Spread (fixScopePipe fixes first) (fixScopePipe fixes second)
-  Gather first second -> Gather (fixScopePipe fixes first) (fixScopePipe fixes second)
-
-fixScopeExpr :: Map Identifier Definition -> Expression -> Expression
-fixScopeExpr fixes (Value value) = Value $ fixScope fixes value
-fixScopeExpr fixes (Var var) = case fixes Map.!? var of
-  Just (Def value) -> value
-  Nothing -> Var var
-fixScopeExpr fixes (Application app appArgs) = Application (fixScopeExpr fixes app) (map (fixScopeExpr fixes) appArgs)
 
 
 evaluatePipeApplication :: Environment -> Pipe -> [Expression] -> IO PValue
 evaluatePipeApplication env pipe args = 
   let (updatedPipe, shouldEval) = updatePipeWithArgs env pipe args
   in if shouldEval
-    then
-      case updatedPipe of
-        Yield exprs pipe -> do
-          result <- S.head $ evaluatePipeInner env pipe (S.fromFoldable exprs & S.mapM (evaluateExpr env))
-          case result of
-            Just value -> return value
-            Nothing -> error "Pipe did not return a value"
-
-        pipe -> do
-          result <- S.head $ evaluatePipeInner env pipe S.nil
-          case result of
-            Just value -> return value
-            Nothing -> error "Pipe did not return a value"
+    then do
+      result <- S.head $ evaluatePipeInner env updatedPipe S.nil
+      case result of
+        Just value -> return value
+        Nothing -> error "Pipe did not return a value"
 
     else return $ PPipe updatedPipe
 
 updatePipeWithArgs :: Environment -> Pipe -> [Expression] -> (Pipe,Bool)
 updatePipeWithArgs env pipe args = case pipe of
-
-  yield@(Yield exprs pipe) -> if length args > 0
-    then error "Pipe got too many args"
-    else (yield, True)
 
   Apply expr -> 
     let go expr args = case expr of
@@ -137,31 +89,32 @@ updatePipeWithArgs env pipe args = case pipe of
             then (Apply (Value value), True)
             else error "Pipe got too many args"
           Var identifier -> case fetchDef env identifier of
-            Just (Def expr) -> go expr args
+            Just value -> go (Value value) args
             Nothing -> error ("The definition '" ++ identifier ++ "' is not in scope")
           Application app appArgs -> go app (appArgs ++ args)
     in go expr args
 
-  Anonymous comp pipeEnv inputs output
-    | length inputs < length args -> error "Pipe got too many args"
+  Anonymous closure bound inputs output
+    | length inputs < length bound + length args -> error "Pipe got too many args"
     | otherwise -> 
       let
-        updatedInputs = drop (length args) inputs
-        updatedEnv = pipeEnv & defs %~ (Map.fromList (zip inputs (map Def args)) <>)
-        updatedPipe = Anonymous comp updatedEnv updatedInputs output
-      in (updatedPipe, length inputs == length args)
+        updatedBound = bound ++ args
+        updatedPipe = Anonymous closure updatedBound inputs output
+      in (updatedPipe, length updatedBound == length inputs)
 
   Builtin boundArgs argsLeft transformer -> 
     let
-      updatedEnv = boundArgs & defs %~ (Map.fromList (zip (map (\n -> "$" ++ show n) [0..]) (map Def args)) <>)
-      updatedPipe = Builtin updatedEnv argsLeft transformer
-    in (updatedPipe, argsLeft updatedEnv == 0)
+      updatedArgs = boundArgs ++ args
+      updatedPipe = Builtin updatedArgs argsLeft transformer
+    in (updatedPipe, argsLeft updatedArgs == 0)
 
   Connect first second -> updateFirstPart Connect first second
 
   Gather first second -> updateFirstPart Gather first second
 
   Spread first second -> updateFirstPart Spread first second
+
+  Forward first second -> updateFirstPart Forward first second
 
   where
     updateFirstPart connector first second = 
@@ -173,40 +126,33 @@ updatePipeWithArgs env pipe args = case pipe of
 evaluateExpr :: Environment -> Expression -> IO PValue
 evaluateExpr env (Value pval) = return pval
 evaluateExpr env (Var identifier) = case fetchDef env identifier of
-  Just (Def value) -> evaluateExpr env value
+  Just value -> return value
   _ -> error ("The definition '" ++ identifier ++ "' is not in scope")
 evaluateExpr env (Application app args) = do
   appValue <- evaluateExpr env app
   case appValue of
     PPipe pipe -> evaluatePipeApplication env pipe args
-    _ -> error "Tried to apply a non-pipe value"
+    value -> 
+      if length args == 0
+        then return value
+        else error "Pipe got too many arguments"
 
 
-applyMultiple
-  :: (Monad m, MonadAsync m)
-  => Int
-  -> ([a] -> m [a])
-  -> SerialT m a
-  -> SerialT m a
- 
+applyMultiple :: (Monad m, MonadAsync m) => Int -> ([a] -> m a) -> SerialT m a -> SerialT m a
+
 applyMultiple 0 f s = do
   let result = f []
   empty <- lift $ S.null s
   if empty
-    then asStream result
+    then S.once result
     else error "Can't use a generator pipe on a nonempty list"
- 
-applyMultiple n f s = do
-  args <- lift $ S.toList $ adapt $ S.take n s
-  let rest = S.drop n s
-  if length args < n
-    then S.nil
-    else (asStream $ f args) <> applyMultiple n f rest
- 
- 
-asStream :: (Monad m, MonadAsync m) => m [a] -> SerialT m a
-asStream xs = do
-  list <- lift xs
-  S.fromFoldable list
- 
 
+applyMultiple n f s = go [] s
+  where 
+    go args rest
+      | length args == n = f args S.|: go [] rest
+      | otherwise = do
+          destructured <- lift $ S.uncons rest
+          case destructured of
+            Just (x,xs) -> go (args ++ [x]) xs
+            Nothing -> S.nil

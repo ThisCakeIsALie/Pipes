@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedLists #-}
-module Parse.ParseTest where
+module Parse.Parser where
 
 import Types
 import Text.ParserCombinators.Parsec
 import Streamly
 import qualified Streamly.Prelude as S
+import Language.List
+import Language.Presets
+import Data.Ratio
 
 pBool :: CharParser st PValue
 pBool = (PBool True <$ string "true")
@@ -33,6 +36,7 @@ pNumber = asNumber
       <$> optionMaybe (char '-') 
       <*> many1 digit 
       <*> optionMaybe (char '.' *> many digit)
+      <?> "Number value"
   where digit = oneOf ['0'..'9']
         asNumber sign whole frac = 
             let actualSign = maybe "" (\a -> [a]) sign
@@ -40,45 +44,22 @@ pNumber = asNumber
                 actualFrac = maybe ".0" (\value -> if value == "" then ".0" else '.':value) frac
             in PNumber (read (actualSign ++ actualWhole ++ actualFrac) :: Double)
 
-pList :: CharParser st PValue
-pList = (PList . S.fromFoldable) 
-    <$> (char '[' *> sepBy (spaces *> pValue <* spaces) (char ',') <* char ']')
-
 pNone :: CharParser st PValue
-pNone = None <$ string "none"
-
-{-
-pPipe :: CharParser st Pipe
-pPipe = try anonymous
-    <|> try apply
-    <|> try yield
-    <|> connect
-  where
-    anonymous = do
-        inputs <- many (pIdentifier <* spaces)
-        spaces *> string "->" *> spaces
-        Anonymous [] inputs <$> pExpression
-    apply = Apply <$> (char '~' *> pExpression)
-    yield = Yield <$> (char '<' *> spaces *> (many $ pExpression <* spaces)) <*> (char '>' *> spaces *> pPipe)
-    connect = chainl1 pPipe (spaces *> char '|' *> spaces *> pure Connect)
--}
+pNone = None <$ string "none" <?> "None value"
 
 pPipeRest :: CharParser st Pipe
-pPipeRest = try (connected Connect '|')
-        <|> try (connected Gather '}')
-        <|> try (connected Spread '{')
+pPipeRest = try (connected Connect "|")
+        <|> try (connected Forward "|>>")
+        <|> try (connected Spread "<|")
+        <|> try (connected Gather "|>")
         <|> pPipePart <* spaces
+        <?> "Anonymous pipe or a connector (e.g. | or |>)"
   where
-    connected con sep = con <$> (pPipePart <* spaces <* char sep <* spaces) <*> pPipeRest
+    connected con sep = con <$> (pPipePart <* spaces <* string sep <* spaces) <*> pPipeRest
 
 pPipe :: CharParser st Pipe
-pPipe = do
-    yielded <- optionMaybe yield
-    case yielded of
-        Just yieldedPipe -> yieldedPipe <$> pPipeRest
-        Nothing -> pPipeRest
-  where
-    yield = Yield <$> (char '<' *> spaces *> (many $ pExpression <* spaces) <* spaces <* char '>' <* spaces)
+pPipe = char ':' *> spaces *> pPipeRest <?> "Pipe value"
+
 pPipePart :: CharParser st Pipe
 pPipePart = try anonymous
         <|> apply
@@ -86,41 +67,46 @@ pPipePart = try anonymous
     anonymous = do
         inputs <- many (try (pIdentifier <* (try (many1 space) <|> lookAhead (string "->"))))
         string "->" *> spaces
-        Anonymous [] (Environment []) inputs <$> pExpression
-    apply = Apply <$> (char ':' *> pExpression)
- 
+        Anonymous [] [] inputs <$> pExpression
+    apply = Apply <$> pExpression
 
+-- PList is handled as syntactic sugar for the list function
 pValue :: CharParser st PValue
 pValue = try pBool
      <|> try pNumber
      <|> try pString
      <|> try pNone
-     <|> try pList
      <|> PPipe <$> pPipe
+     <?> "Value"
 
 pIdentifier :: CharParser st Identifier
-pIdentifier = (:) <$> oneOf (lc ++ uc) <*> many (oneOf (lc ++ uc ++ nums ++ ['_']))
+pIdentifier = try ((:) <$> oneOf (lc ++ uc ++ special) <*> many (oneOf (lc ++ uc ++ nums ++ special)))
           <|> choice (map string operator)
+          <?> "Identifier"
     where lc = ['a'..'z']
           uc = ['A'..'Z']
+          special = ['_']
           nums = ['0'..'9']
           operator :: [String]
-          operator = ["+","-","*","/","=","?","!","~"]
+          operator = ["/=","+","-","*","/","=","?","!","~"]
 
-pExpression :: CharParser st Expression
-pExpression = Value <$> try pValue
-          <|> Var <$> try pIdentifier
-          <|> inParens (sepBy1 pExpression (many1 space) >>= asApplication)
-    where asApplication [] = unexpected "Empty application"
-          asApplication (x:xs) = return $ Application x xs
+pExpression = try (sepEndBy1 innerExpr (try (many1 space)) >>= asApplication)
+           <|> try (Value <$> pValue)
+           <|> try (Var <$> pIdentifier)
+           <|> syntacticSugar
+           <?> "Expression"
+  where asApplication [] = unexpected "Empty application"
+        asApplication (x:xs) = return $ Application x xs
+        innerExpr = try (inParens (try pExpression <|> innerExpr))
+            <|> try (Value <$> pValue)
+            <|> try (Var <$> pIdentifier)
+            <|> syntacticSugar
+
+
+syntacticSugar :: CharParser st Expression
+syntacticSugar = (\x -> Application (Value list) x) 
+    <$> (char '[' *> sepBy (spaces *> pExpression <* spaces) (char ',') <* char ']')
+
 
 inParens :: CharParser st a -> CharParser st a
 inParens parser = (char '(' *> spaces) *> parser <* (spaces *> char ')')
-
-postfixChain :: Parser a -> Parser (a -> a) -> Parser a
-postfixChain p op = do
-  x <- p
-  rest x
-  where
-    rest x = (do f <- op
-                 rest $ f x) <|> return x

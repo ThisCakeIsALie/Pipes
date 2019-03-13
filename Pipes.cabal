@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: aa4ca580f9049c48a2808ae731ddc7eedf42a7b952423824ab7822b2c419ca4d
+-- hash: 23bf48c601fa084b17d6be26400f9ab235b3692758e762f43c0b9e37bbc57494
 
 name:           Pipes
 version:        0.1.0.0
@@ -30,10 +30,12 @@ library
       Interpret.Environment
       Interpret.Evaluate
       Language.Arithmetic
+      Language.Control
       Language.IO
+      Language.List
       Language.Presets
       Matrix
-      Parse.ParseTest
+      Parse.Parser
       Pipes
       Testing
       Types
@@ -47,7 +49,9 @@ library
     , containers
     , lens
     , mtl
+    , number
     , parsec
+    , split
     , streamly
   default-language: Haskell2010
 
@@ -65,7 +69,9 @@ executable Pipes-exe
     , containers
     , lens
     , mtl
+    , number
     , parsec
+    , split
     , streamly
   default-language: Haskell2010
 
@@ -84,6 +90,8 @@ test-suite Pipes-test
     , containers
     , lens
     , mtl
+    , number
     , parsec
+    , split
     , streamly
   default-language: Haskell2010

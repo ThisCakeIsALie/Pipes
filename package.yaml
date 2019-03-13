@@ -27,6 +27,8 @@ dependencies:
 - mtl
 - array
 - parsec
+- split
+- number
 
 library:
   source-dirs: src
