@@ -8,7 +8,13 @@ import qualified Streamly.Prelude as S
 import Interpret.Evaluate
 
 listBuiltins :: Environment -> Map Identifier Definition
-listBuiltins env = [("range", asPipe range), ("take3", asPipe take3), ("list", list),("all", asPipe $ allVal env),("/=", asPipe neVal)]
+listBuiltins env = [
+    ("range", asPipe range),
+    ("take3", asPipe take3),
+    ("list", list),
+    ("all", asPipe $ allVal env),
+    ("/=", asPipe neVal)
+  ]
 
 list :: PValue
 list = PPipe $ Builtin [] (const 0) transformer

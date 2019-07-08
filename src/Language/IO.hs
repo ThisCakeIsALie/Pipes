@@ -10,7 +10,7 @@ ioBuiltins :: Map Identifier Definition
 ioBuiltins = [("println", asPipe printlnValue),("print", asPipe printValue),("input", asPipe inputValue)]
 
 printlnValue :: PValue -> IO PValue
-printlnValue val = putStrLn (show val) >> return val
+printlnValue val = print val >> return val
 
 printValue :: PValue -> IO PValue
 printValue val = putStr (show val) >> hFlush stdout >> return val

@@ -26,10 +26,7 @@ propagateEnvInPipe fixes pipe = case pipe of
   Apply expr -> Apply (propagateEnvInExpr fixes expr)
   Anonymous env bound inputs output -> Anonymous (fixes <> env) bound inputs output
   Builtin boundArgs argsLeft transformer -> Builtin boundArgs argsLeft transformer
-  Connect first second -> connectPropagated Connect first second
-  Spread first second -> connectPropagated Spread first second
-  Gather first second -> connectPropagated Gather first second
-  Forward first second -> connectPropagated Forward first second
+  Transform transformer first second -> connectPropagated (Transform (propagateEnvInExpr fixes transformer)) first second
   where
     connectPropagated connector first second = 
       let

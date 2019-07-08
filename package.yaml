@@ -29,6 +29,7 @@ dependencies:
 - parsec
 - split
 - number
+- random
 
 library:
   source-dirs: src

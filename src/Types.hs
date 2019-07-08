@@ -61,17 +61,10 @@ data Expression = Value PValue
  
  
  
- 
- 
- 
 data Pipe = Anonymous {_closure :: Environment, _bound :: [Expression], _inputs :: [Identifier], _output :: Expression}
-          | Apply Expression
           | Builtin {_bound :: [Expression], _argsLeft :: [Expression] -> Int, _transformer :: [PValue] -> [PValue] -> IO PValue}
-          | Connect Pipe Pipe
-          | Gather Pipe Pipe
-          | Spread Pipe Pipe
-          | Forward Pipe Pipe
- 
+          | Apply Expression
+          | Transform Expression Pipe Pipe
  
  
 type DefArgument = Identifier -- | Defined Identifier Expression
@@ -80,3 +73,6 @@ type DefArgument = Identifier -- | Defined Identifier Expression
 makeLenses ''Pipe
 makePrisms ''Expression
 makePrisms ''PValue
+
+
+--TODO: Add tag as expr or value that contains scope (This avoids recursively updating scopes)

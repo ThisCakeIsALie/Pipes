@@ -5,6 +5,7 @@ import Types
 import Language.Presets
 import Data.Map (Map)
 import Data.Fixed
+import System.Random
 
 arithmeticBuiltins :: Map Identifier Definition
 arithmeticBuiltins = [
@@ -14,7 +15,8 @@ arithmeticBuiltins = [
         ("*", asPipe multiplyValue),
         ("/", asPipe divideValue),
         ("mod", asPipe modValue),
-        ("pi", PNumber pi)
+        ("pi", PNumber pi),
+        ("random", asPipe randomValue)
     ]
 
 succValue :: PValue -> IO PValue
@@ -34,3 +36,6 @@ divideValue (PNumber x) (PNumber y) = return $ PNumber (x / y)
 
 modValue :: PValue -> PValue -> IO PValue
 modValue (PNumber x) (PNumber y) = return $ PNumber (x `mod'` y)
+
+randomValue :: IO PValue
+randomValue = PNumber <$> randomIO

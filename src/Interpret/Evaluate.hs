@@ -12,7 +12,6 @@ import Control.Applicative ((<|>))
 import qualified Data.Map as Map
 import Data.Map (Map)
  
---TODO: If a none element is found
 evaluatePipeInner :: Environment -> Pipe -> ValueStream -> ValueStream
 evaluatePipeInner env pipe s = case pipe of
 
@@ -37,22 +36,12 @@ evaluatePipeInner env pipe s = case pipe of
     evalArgs <- lift $ traverse (evaluateExpr env) boundArgs
     evalRawPipe (argsLeft boundArgs) (transformer evalArgs) s
 
-  Connect first rest -> evaluatePipeInner env rest . evaluatePipeInner env first $ s
-
-  Gather first second -> do
-    drained <- lift $ S.toList $ evaluatePipeInner env first s
-    evaluatePipeInner env second (return $ PList $ S.fromFoldable drained)
-
-  Forward first rest -> 
-    let
-      firstResult = evaluatePipeInner env first s
-      packedResult = return . PList $ firstResult
-    in evaluatePipeInner env rest packedResult
-
-  Spread first rest ->
-    let 
-      firstResult = evaluatePipeInner env first s
-    in firstResult >>= spread & evaluatePipeInner env rest
+  Transform transformer first rest -> do
+    let firstResult = evaluatePipeInner env first s
+    transformed <- lift $ evaluateExpr env (Application transformer [Value $ PList firstResult])
+    case transformed of
+      PList val -> evaluatePipeInner env rest val
+      val -> evaluatePipeInner env rest (return val)
 
  where
   evalRawPipe underflow transformer s =
@@ -61,9 +50,6 @@ evaluatePipeInner env pipe s = case pipe of
       else error "Pipe got too many arguments"
 
   yieldValue value = evalRawPipe 0 (\_ -> return value) s
-
-  spread (PList list) = list
-  spread value        = return value
  
 
 
@@ -108,14 +94,7 @@ updatePipeWithArgs env pipe args = case pipe of
       updatedPipe = Builtin updatedArgs argsLeft transformer
     in (updatedPipe, argsLeft updatedArgs == 0)
 
-  Connect first second -> updateFirstPart Connect first second
-
-  Gather first second -> updateFirstPart Gather first second
-
-  Spread first second -> updateFirstPart Spread first second
-
-  Forward first second -> updateFirstPart Forward first second
-
+  Transform transformer first second -> updateFirstPart (Transform transformer) first second
   where
     updateFirstPart connector first second = 
       let

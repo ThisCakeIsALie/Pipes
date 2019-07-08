@@ -6,8 +6,10 @@ import Text.ParserCombinators.Parsec
 import Streamly
 import qualified Streamly.Prelude as S
 import Language.List
+import Language.Control
 import Language.Presets
 import Data.Ratio
+import Control.Monad
 
 pBool :: CharParser st PValue
 pBool = (PBool True <$ string "true")
@@ -48,14 +50,21 @@ pNone :: CharParser st PValue
 pNone = None <$ string "none" <?> "None value"
 
 pPipeRest :: CharParser st Pipe
-pPipeRest = try (connected Connect "|")
-        <|> try (connected Forward "|>>")
-        <|> try (connected Spread "<|")
-        <|> try (connected Gather "|>")
+pPipeRest = try (connected idValue "|")
+        <|> try (connected gather "|>")
+        <|> try transformer
+        <|> try (connected spread "<|")
+        <|> try (connected (drain >=> gather) "!>")
         <|> pPipePart <* spaces
         <?> "Anonymous pipe or a connector (e.g. | or |>)"
   where
-    connected con sep = con <$> (pPipePart <* spaces <* string sep <* spaces) <*> pPipeRest
+    connected con sep = (Transform (Value $ asPipe con)) <$> (pPipePart <* spaces <* string sep <* spaces) <*> pPipeRest
+    transformer = do
+        part <- pPipePart <* spaces
+        char '<' <* spaces
+        transformer <- pExpression <* spaces
+        char '>' <* spaces
+        Transform transformer part <$> pPipeRest
 
 pPipe :: CharParser st Pipe
 pPipe = char ':' *> spaces *> pPipeRest <?> "Pipe value"
@@ -81,7 +90,7 @@ pValue = try pBool
 
 pIdentifier :: CharParser st Identifier
 pIdentifier = try ((:) <$> oneOf (lc ++ uc ++ special) <*> many (oneOf (lc ++ uc ++ nums ++ special)))
-          <|> choice (map string operator)
+          <|> choice (map (try . string) operator)
           <?> "Identifier"
     where lc = ['a'..'z']
           uc = ['A'..'Z']
@@ -90,16 +99,18 @@ pIdentifier = try ((:) <$> oneOf (lc ++ uc ++ special) <*> many (oneOf (lc ++ uc
           operator :: [String]
           operator = ["/=","+","-","*","/","=","?","!","~"]
 
+-- TODO: Parse Vars directly as empty applications
+pExpression :: CharParser st Expression
 pExpression = try (sepEndBy1 innerExpr (try (many1 space)) >>= asApplication)
            <|> try (Value <$> pValue)
-           <|> try (Var <$> pIdentifier)
+           <|> try ((\x -> Application (Var x) []) <$> pIdentifier)
            <|> syntacticSugar
            <?> "Expression"
   where asApplication [] = unexpected "Empty application"
         asApplication (x:xs) = return $ Application x xs
         innerExpr = try (inParens (try pExpression <|> innerExpr))
             <|> try (Value <$> pValue)
-            <|> try (Var <$> pIdentifier)
+            <|> try ((\x -> Application (Var x) []) <$> pIdentifier)
             <|> syntacticSugar
 
 
