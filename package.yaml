@@ -30,6 +30,7 @@ dependencies:
 - split
 - number
 - random
+- freer-simple
 
 library:
   source-dirs: src

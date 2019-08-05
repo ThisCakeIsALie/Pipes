@@ -2,31 +2,18 @@
 module Language.Control where
 
 import Types
-import Language.Presets
-import qualified Streamly.Prelude as S
-import Data.Map (Map)
+import Prelude hiding (pred,map)
+import Language.Native
+import Interpret.Evaluate
 
-controlBuiltins :: Map Identifier Definition
-controlBuiltins = [
-    ("~", asPipe idValue),
-    ("drain", asPipe drain),
-    ("gather", asPipe gather),
-    ("spread", asPipe spread)
+apply :: Environment -> Value -> Value -> Runtime Value
+apply env f x = applyValue env f [x]
+
+map :: Environment -> Value -> Value -> Runtime Value
+map env f x = undefined
+
+control :: Environment
+control = [
+    globalPipe "apply" apply,
+    globalPipe "map" map
   ]
-
-idValue :: PValue -> IO PValue
-idValue = return
-
-drain :: PValue -> IO PValue
-drain (PList list) = do
-  drained <- S.toList list
-  return $ PList $ S.fromFoldable drained
-
-gather :: PValue -> IO PValue
-gather = return . PList . S.once . return
-
-spread :: PValue -> IO PValue
-spread (PList list) = return . PList $ list >>= spreadValue
-  where
-    spreadValue (PList list) = list
-    spreadValue value        = return value

@@ -2,14 +2,19 @@
 module Testing where
 
 import Types
-import Streamly
-import Streamly.Prelude
+import Text.ParserCombinators.Parsec
+import Parse.Parser
 import Interpret.Evaluate
 
-pipe = Anonymous [] [] ["a","b"] (Var "b")
-
 testEnv :: Environment
-testEnv = [("a", PNumber 42), ("funcLoc", PPipe pipe)]
- 
-list :: ValueStream
-list = fromFoldable $ ([PNumber 5, PList $ fromFoldable ([None] :: [PValue]),PBool True] :: [PValue])
+testEnv = [
+    ("add",Def (Pipe $ P (const 2) (\_ [Number a,Number b] -> pure $ Number $ a + b)) True),
+    ("test",Def (Pipe $ P (const 2) (\_ [a,b] -> print b >> pure a)) True)
+    ]
+
+testParse :: String -> ParsedExpression
+testParse str = case parse pExpression "" str of
+    Left ex -> error (show ex)
+    Right result -> result
+
+testEval = evaluateParsedExpr testEnv . testParse

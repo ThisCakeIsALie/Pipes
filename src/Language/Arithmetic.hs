@@ -2,40 +2,21 @@
 module Language.Arithmetic where
 
 import Types
-import Language.Presets
-import Data.Map (Map)
-import Data.Fixed
-import System.Random
+import Prelude hiding (succ, pred)
+import Language.Native
 
-arithmeticBuiltins :: Map Identifier Definition
-arithmeticBuiltins = [
-        ("succ", asPipe succValue),
-        ("+", asPipe addValue),
-        ("-", asPipe subtractValue),
-        ("*", asPipe multiplyValue),
-        ("/", asPipe divideValue),
-        ("mod", asPipe modValue),
-        ("pi", PNumber pi),
-        ("random", asPipe randomValue)
+add :: Value -> Value -> Runtime Value
+add (Number a) (Number b) = pure $ Number $ a + b
+
+pred :: Value -> Runtime Value
+pred (Number a) = pure $ Number (a - 1)
+
+succ :: Value -> Runtime Value
+succ (Number a) = pure $ Number (a + 1)
+
+arithmetic :: Environment
+arithmetic = [
+        globalPipe "+" add,
+        globalPipe "pred" pred,
+        globalPipe "succ" succ
     ]
-
-succValue :: PValue -> IO PValue
-succValue (PNumber n) = return $ PNumber (n + 1)
-
-addValue :: PValue -> PValue -> IO PValue
-addValue (PNumber x) (PNumber y) = return $ PNumber (x + y)
-
-subtractValue :: PValue -> PValue -> IO PValue
-subtractValue (PNumber x) (PNumber y) = return $ PNumber (x - y)
-
-multiplyValue :: PValue -> PValue -> IO PValue
-multiplyValue (PNumber x) (PNumber y) = return $ PNumber (x * y)
-
-divideValue :: PValue -> PValue -> IO PValue
-divideValue (PNumber x) (PNumber y) = return $ PNumber (x / y)
-
-modValue :: PValue -> PValue -> IO PValue
-modValue (PNumber x) (PNumber y) = return $ PNumber (x `mod'` y)
-
-randomValue :: IO PValue
-randomValue = PNumber <$> randomIO

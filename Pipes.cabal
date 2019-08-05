@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 08a93f84cf13911673989cbaf16af19e8157e1d2452dc967a826b6ba2e9d2f06
+-- hash: 1bc151723ff4f09fe6220a4ac46d97ee7a4e9a66d22453b01db5e04fdc465e1d
 
 name:           Pipes
 version:        0.1.0.0
@@ -32,9 +32,7 @@ library
       Language.Arithmetic
       Language.Control
       Language.IO
-      Language.List
-      Language.Presets
-      Matrix
+      Language.Native
       Parse.Parser
       Pipes
       Testing
@@ -47,6 +45,7 @@ library
       array
     , base >=4.7 && <5
     , containers
+    , freer-simple
     , lens
     , mtl
     , number
@@ -68,6 +67,7 @@ executable Pipes-exe
     , array
     , base >=4.7 && <5
     , containers
+    , freer-simple
     , lens
     , mtl
     , number
@@ -90,6 +90,7 @@ test-suite Pipes-test
     , array
     , base >=4.7 && <5
     , containers
+    , freer-simple
     , lens
     , mtl
     , number

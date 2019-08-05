@@ -5,35 +5,31 @@ import Types
 import Text.ParserCombinators.Parsec
 import Streamly
 import qualified Streamly.Prelude as S
-import Language.List
-import Language.Control
-import Language.Presets
 import Data.Ratio
 import Control.Monad
 
-pBool :: CharParser st PValue
-pBool = (PBool True <$ string "true")
-   <|> (PBool False <$ string "false")
+pBool :: CharParser st ParsedValue
+pBool = (ParsedBool True <$ string "true")
+   <|> (ParsedBool False <$ string "false")
    <?> "Boolean value (true or false)"
 
-pString :: CharParser st PValue
+pString :: CharParser st ParsedValue
 pString = try (wholeString '\"')
-      <|> wholeString '\''
+      <|> (try $ wholeString '\'')
+      <|> ParsedString <$> (char ':' *> pIdentifier)
       <?> "String value"
   where 
-    wholeString :: Char -> CharParser st PValue
+    wholeString :: Char -> CharParser st ParsedValue
     wholeString delimiter = do
         char delimiter
         content <- stringContent delimiter
         char delimiter
-        return $ PString content
-    stringContent :: Char -> CharParser st String
+        return $ ParsedString content
     stringContent delimiter = many (quotedChar delimiter)
-    quotedChar :: Char -> CharParser st Char
     quotedChar delimiter = try (delimiter <$ string ['\\', delimiter])
                        <|> noneOf [delimiter]
 
-pNumber :: CharParser st PValue
+pNumber :: CharParser st ParsedValue
 pNumber = asNumber 
       <$> optionMaybe (char '-') 
       <*> many1 digit 
@@ -44,49 +40,43 @@ pNumber = asNumber
             let actualSign = maybe "" (\a -> [a]) sign
                 actualWhole = if whole == "" then "0" else whole
                 actualFrac = maybe ".0" (\value -> if value == "" then ".0" else '.':value) frac
-            in PNumber (read (actualSign ++ actualWhole ++ actualFrac) :: Double)
+            in ParsedNumber (read (actualSign ++ actualWhole ++ actualFrac) :: Double)
 
-pNone :: CharParser st PValue
-pNone = None <$ string "none" <?> "None value"
+pNone :: CharParser st ParsedValue
+pNone = ParsedNone <$ string "none" <?> "None value"
 
-pPipeRest :: CharParser st Pipe
-pPipeRest = try (connected idValue "|")
-        <|> try (connected gather "|>")
-        <|> try transformer
-        <|> try (connected spread "<|")
-        <|> try (connected (drain >=> gather) "!>")
-        <|> pPipePart <* spaces
-        <?> "Anonymous pipe or a connector (e.g. | or |>)"
+pCollection :: Char -> Char -> CharParser st a -> CharParser st [a]
+pCollection start end content = char start *> sepBy (spaces *> content <* spaces) (char ',') <* char end
+
+pList :: CharParser st ParsedValue
+pList = ParsedList <$> pCollection '[' ']' pExpression
+
+pStream :: CharParser st ParsedValue
+pStream = char '#' *> (ParsedStream <$> pCollection '[' ']' pExpression)
+
+pObject :: CharParser st ParsedValue
+pObject = ParsedObject <$> pCollection '{' '}' pObjectPair
   where
-    connected con sep = (Transform (Value $ asPipe con)) <$> (pPipePart <* spaces <* string sep <* spaces) <*> pPipeRest
-    transformer = do
-        part <- pPipePart <* spaces
-        char '<' <* spaces
-        transformer <- pExpression <* spaces
-        char '>' <* spaces
-        Transform transformer part <$> pPipeRest
+    pObjectPair = (,) <$> (pIdentifier <* char ':' <* spaces) <*> pExpression
 
-pPipe :: CharParser st Pipe
-pPipe = char ':' *> spaces *> pPipeRest <?> "Pipe value"
-
-pPipePart :: CharParser st Pipe
-pPipePart = try anonymous
-        <|> apply
-  where
-    anonymous = do
-        inputs <- many (try (pIdentifier <* (try (many1 space) <|> lookAhead (string "->"))))
-        string "->" *> spaces
-        Anonymous [] [] inputs <$> pExpression
-    apply = Apply <$> pExpression
-
--- PList is handled as syntactic sugar for the list function
-pValue :: CharParser st PValue
-pValue = try pBool
+pProductiveValue :: CharParser st ParsedValue
+pProductiveValue = try pAnonymous
+     <|> try pBool
      <|> try pNumber
      <|> try pString
      <|> try pNone
-     <|> PPipe <$> pPipe
+     <|> try pList
+     <|> try pStream
+     <|> pObject
      <?> "Value"
+
+pAnonymous :: CharParser st ParsedValue
+pAnonymous = do
+    inputs <- sepEndBy1 pIdentifier spaces
+    spaces
+    char '~'
+    spaces
+    (ParsedPipe . Anonymous inputs) <$> pExpression
 
 pIdentifier :: CharParser st Identifier
 pIdentifier = try ((:) <$> oneOf (lc ++ uc ++ special) <*> many (oneOf (lc ++ uc ++ nums ++ special)))
@@ -97,26 +87,45 @@ pIdentifier = try ((:) <$> oneOf (lc ++ uc ++ special) <*> many (oneOf (lc ++ uc
           special = ['_']
           nums = ['0'..'9']
           operator :: [String]
-          operator = ["/=","+","-","*","/","=","?","!","~"]
+          operator = ["/=","=","+","-","*","/","?","!"]
 
--- TODO: Parse Vars directly as empty applications
-pExpression :: CharParser st Expression
-pExpression = try (sepEndBy1 innerExpr (try (many1 space)) >>= asApplication)
-           <|> try (Value <$> pValue)
-           <|> try ((\x -> Application (Var x) []) <$> pIdentifier)
-           <|> syntacticSugar
-           <?> "Expression"
-  where asApplication [] = unexpected "Empty application"
-        asApplication (x:xs) = return $ Application x xs
-        innerExpr = try (inParens (try pExpression <|> innerExpr))
-            <|> try (Value <$> pValue)
-            <|> try ((\x -> Application (Var x) []) <$> pIdentifier)
-            <|> syntacticSugar
+pExpression :: CharParser st ParsedExpression
+pExpression = expr
+  where
+    productive = (try $ ParsedValue <$> pProductiveValue)
+             <|> (try $ ParsedVar <$> pIdentifier)
+             <|> inParens pExpression
+    expr = try (pTransform productive)
+       <|> try (pApplication productive)
+       <|> productive
 
+pApplication :: CharParser st ParsedExpression -> CharParser st ParsedExpression
+pApplication productive = do
+                applicant <- productive
+                spaces
+                args <- sepEndBy productive spaces
+                pure $ ParsedApplication applicant args
 
-syntacticSugar :: CharParser st Expression
-syntacticSugar = (\x -> Application (Value list) x) 
-    <$> (char '[' *> sepBy (spaces *> pExpression <* spaces) (char ',') <* char ']')
+pTransform :: CharParser st ParsedExpression -> CharParser st ParsedExpression
+pTransform productive = chainl1 pFiller (try (pSpecialTrans "|" "apply") <|> try (pSpecialTrans "<|" "map") <|> pTransformer)
+  where
+    pSpecialTrans :: String -> String -> CharParser st (ParsedExpression -> ParsedExpression -> ParsedExpression)
+    pSpecialTrans sep varName = do
+        spaces
+        string sep
+        spaces
+        let transformer = ParsedVar varName
+        pure $ (\before after -> ParsedValue $ ParsedPipe $ Transform before transformer after)
+    pTransformer = do
+        spaces
+        char '<'
+        spaces
+        transformer <- pExpression
+        spaces
+        char '>'
+        spaces
+        pure $ (\before after -> ParsedValue $ ParsedPipe $ Transform before transformer after)
+    pFiller = (try $ pApplication productive) <|> productive
 
 
 inParens :: CharParser st a -> CharParser st a

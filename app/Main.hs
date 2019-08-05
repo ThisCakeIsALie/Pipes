@@ -1,6 +1,7 @@
 module Main where
 
-import Matrix
+import Pipes
+
 main :: IO ()
 --main = balMat 5 >>= print
-main = pythTriples 1300
+main = repl

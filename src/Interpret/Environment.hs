@@ -1,42 +1,29 @@
-{-# LANGUAGE Rank2Types #-}
 module Interpret.Environment where
 
 import Types
-import qualified Data.Map as Map
-import Data.Map (Map)
 import Control.Lens
-import qualified Streamly.Prelude as S
+import qualified Data.Map as M
 
-fetchDef :: Environment -> Identifier -> Maybe Definition
-fetchDef env identifier = Map.lookup identifier env
+mergeEnv :: Environment -> Environment -> Environment
+mergeEnv = M.union
 
-updateEnvWithValue :: (Identifier, PValue) -> Environment -> Environment
-updateEnvWithValue (identifier, value) = Map.insert identifier value
+slurpGlobals :: Environment -> Environment -> Environment
+slurpGlobals env1 env2 = 
+  let
+    onlyGlobals = M.filter (^. defGlobal) env2
+  in mergeEnv onlyGlobals env1
 
-localizeEnvWithValue :: [(Identifier, PValue)] -> Environment -> Environment
-localizeEnvWithValue toUpdate env = foldr updateEnvWithValue env toUpdate
- 
-propagateEnvInValue :: Environment -> PValue -> PValue
-propagateEnvInValue fixes (PPipe pipe) = PPipe $ propagateEnvInPipe fixes pipe
-propagateEnvInValue fixes (PList list) = PList $ S.mapM (return . propagateEnvInValue fixes) list
-propagateEnvInValue fixes value = value
+findDef :: Identifier -> Environment -> Maybe Definition
+findDef = M.lookup
 
-propagateEnvInPipe :: Environment -> Pipe -> Pipe
-propagateEnvInPipe fixes pipe = case pipe of
-  Apply expr -> Apply (propagateEnvInExpr fixes expr)
-  Anonymous env bound inputs output -> Anonymous (fixes <> env) bound inputs output
-  Builtin boundArgs argsLeft transformer -> Builtin boundArgs argsLeft transformer
-  Transform transformer first second -> connectPropagated (Transform (propagateEnvInExpr fixes transformer)) first second
-  where
-    connectPropagated connector first second = 
-      let
-        propagatedFirst = propagateEnvInPipe fixes first
-        propagatedSecond = propagateEnvInPipe fixes second
-      in connector propagatedFirst propagatedSecond
+define :: Identifier -> Definition -> Environment -> Environment
+define = M.insert
 
-propagateEnvInExpr :: Environment -> Expression -> Expression
-propagateEnvInExpr fixes (Value value) = Value $ propagateEnvInValue fixes value
-propagateEnvInExpr fixes (Var var) = case fixes Map.!? var of
-  Just value -> Value value
-  Nothing -> Var var
-propagateEnvInExpr fixes (Application app appArgs) = Application (propagateEnvInExpr fixes app) (map (propagateEnvInExpr fixes) appArgs)
+defineValue :: Identifier -> Value -> Bool -> Environment -> Environment
+defineValue key value global env = define key (Def value global) env
+
+defineAll :: [(Identifier,Definition)] -> Environment -> Environment
+defineAll newDefs env = foldr (\(name,value) env -> define name value env) env newDefs
+
+defineAllValues :: [(Identifier,Value)] -> Bool -> Environment -> Environment
+defineAllValues newVals global env = defineAll (map (\(key,val) -> (key, Def val global)) newVals) env

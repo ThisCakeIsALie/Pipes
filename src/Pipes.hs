@@ -7,19 +7,27 @@ import Interpret.Evaluate
 import Text.ParserCombinators.Parsec
 import qualified Streamly.Prelude as S
 import Data.Map (Map)
-import Language.Arithmetic
-import Language.IO
-import Language.Control
-import Language.List
+import System.IO
+import Control.Monad
 
-evalExpr :: String -> IO PValue
-evalExpr input = 
+import Language.Arithmetic
+import Language.Control
+
+eval :: String -> IO (Either String Value)
+eval input = 
     case parse pExpression "" input of
-        Right parsed -> evaluateExpr prelude parsed
-        Left failed -> error (show failed)
+        Right parsed -> Right <$> evaluateParsedExpr prelude parsed
+        Left failed -> pure $ Left $ show failed
 
 prelude :: Environment
-prelude = arithmeticBuiltins <> ioBuiltins <> controlBuiltins <> (listBuiltins prelude)
+prelude = arithmetic <> control
 
-succValue :: PValue -> PValue
-succValue (PNumber n) = PNumber (n+1)
+repl :: IO ()
+repl = forever $ do
+    putStr "> "
+    hFlush stdout
+    input <- getLine
+    result <- eval input
+    case result of
+        Right value -> print value
+        Left error -> putStrLn $ "Encountered error: " ++ error
